@@ -25,6 +25,9 @@ def ptychographicScalar(w, Ew_ini, exp_trace, n, motor_step, position= None, N_m
     Ew = Ew_ini
 
     G_min = 100
+    G_prev = 0
+    counter = 0
+    threshold = 20
 
     for i in range(N_iters):
 
@@ -45,10 +48,11 @@ def ptychographicScalar(w, Ew_ini, exp_trace, n, motor_step, position= None, N_m
             # Ew_ret = np.divide(np.abs(Ew_ini) * Ew, np.abs(Ew), where=np.abs(Ew) != 0)
             ret_trace = mu*sim_trace/np.max(mu*sim_trace)
 
+        alpha = np.random.rand(1)*2
         cal_exp_trace = np.divide(exp_trace, mu, where=mu!=0)
         Ew_new_SHG = np.divide(np.sqrt(cal_exp_trace)*Ew_SHG, np.abs(Ew_SHG), where=np.abs(Ew_SHG) != 0)
         Et_new_SHG = ifftshift(ifft(Ew_new_SHG, N, 1), 1)
-        Et_new_prop = (1/2)*(2*Et_prop+(np.conj(Et_prop)/np.max(np.abs(Et_prop))**2)*(Et_new_SHG-Et_SHG))
+        Et_new_prop = (1/2)*(2*Et_prop+alpha*(np.conj(Et_prop)/np.max(np.abs(Et_prop))**2)*(Et_new_SHG-Et_SHG))
         Ew_new_prop = fft(ifftshift(Et_new_prop, 1), N, 1)
         Ew_new_array = Ew_new_prop*np.exp(1j * prop_phase)
         Ew_new = np.average(Ew_new_array, axis=0)
@@ -60,6 +64,13 @@ def ptychographicScalar(w, Ew_ini, exp_trace, n, motor_step, position= None, N_m
         #     Ew = Ew_new
 
         Ew = Ew_new
+
+        # Method to introduce a perturbation in the electric field to force new updates
+        if counter > threshold and G > G_prev:
+            Ew = Ew + 5*np.random.rand(len(Ew))
+            counter = 0
+        G_prev = G
+        counter = counter + 1
 
 
     if position:
