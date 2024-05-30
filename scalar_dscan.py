@@ -50,7 +50,6 @@ trace_sim = simulateDSCAN(w, insertion, nw, Ew)
 
 trace_sim = readTrace('Data\\Traza_experimental.txt', 'Data\\landa_ocean.txt', w)
 
-print(trace_sim.shape)
 w_izq = 3.6
 w_der = 5.8
 w0 = 2.4

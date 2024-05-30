@@ -1,6 +1,8 @@
 import numpy as np
 from scipy.fft import fft, ifft, ifftshift
 import matplotlib.pyplot as plt
+from alive_progress import alive_bar
+from tqdm import tqdm
 
 def ptychographicScalar(w, Ew_ini, exp_trace, n, motor_step, position= None, N_motors=2, wedge_angle = 8, N_iters=150, lims=None):
 
@@ -27,9 +29,9 @@ def ptychographicScalar(w, Ew_ini, exp_trace, n, motor_step, position= None, N_m
     G_min = 100
     G_prev = 0
     counter = 0
-    threshold = 20
+    threshold = 10
 
-    for i in range(N_iters):
+    for i in tqdm(range(N_iters), ncols=100, desc='Retrieval process'):
 
         Ew_prop = np.multiply(Ew[np.newaxis, :], np.exp(-1j*prop_phase))
         Et_prop = ifftshift(ifft(Ew_prop, N, 1), 1)
@@ -71,6 +73,7 @@ def ptychographicScalar(w, Ew_ini, exp_trace, n, motor_step, position= None, N_m
             counter = 0
         G_prev = G
         counter = counter + 1
+
 
 
     if position:
