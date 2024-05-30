@@ -1,24 +1,46 @@
+import random
+
 import numpy as np
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 from scipy.fft import fft, ifft, fftshift, ifftshift
+from scipy.optimize import minimize
+
+from lib.files import readSpectrum
 
 c = 3e2  # nm/fs
 
-def readSpectrum(filePath, w):
-    spectrum = np.loadtxt(filePath)
-    spectrum[:, 0] = spectrum[:, 0] * 1e9
 
-    modAxis = np.divide(2 * np.pi * c, spectrum[:, 0], where=spectrum[:, 0] != 0)
-    freqSpec_f = interp1d(modAxis, spectrum[:, 1] * (spectrum[:, 0]**2/(2*np.pi*c)), kind='cubic',
-                          bounds_error=False,
-                          fill_value=0)
-    freqSpec = np.abs(freqSpec_f(w))
-    freqSpec = freqSpec/np.max(freqSpec)
-    freqPhase_f = interp1d(modAxis, spectrum[:, 2], kind='cubic', bounds_error=False, fill_value=0)
-    freqPhase = freqPhase_f(w)
 
-    return np.sqrt(freqSpec)*np.exp(1j*freqPhase)
+def errorG(x, w, w0, I_x, I_y, prop_phase, angles, trace_exp, lims, N_terms):
+    #
+    # phase_x = (1/2)*x[0]*(w-w0)**2 + (1/6)*x[1]*(w-w0)**3 + (1/24)*x[2]*(w-w0)**4 + (1/120)*x[3]*(w-w0)**5
+    # phase_y = (x[4] + x[5]*(w-w0) + (1/2)*x[6]*(w-w0)**2 + (1/6)*x[7]*(w-w0)**3 + (1/24)*x[8]*(w-w0)**4 +
+    #            (1/120)*x[9]*(w-w0)**5)
+
+    phase_x = np.zeros(len(trace_exp[0, :]))
+    phase_y = np.zeros(len(trace_exp[0, :]))
+
+    for i in range(N_terms):
+        phase_x = phase_x + x[i] * np.cos(2*w*i*np.pi/2.5) + x[N_terms+i]*np.sin(2*w*i*np.pi/2.5)
+        phase_y = phase_y + x[2*N_terms+i]*np.cos(2*w*i*np.pi/2.5) + x[3*N_terms+i] * np.sin(2*w*i*np.pi/2.5)
+
+    phase_y = phase_y + x[40] + x[41]*(w-w0)
+
+    Ew = np.array([np.sqrt(I_x)*np.exp(1j*phase_x), np.sqrt(I_y)*np.exp(1j*phase_y)])
+    Ew_prop = np.multiply(Ew[:, np.newaxis, :], np.exp(-1j * prop_phase))
+    Et_prop = ifftshift(ifft(Ew_prop, N, 2), 2)
+    Et_proy = Et_prop[0, :, :] * np.cos(angles) + Et_prop[1, :, :] * np.sin(angles)
+    Et_SHG = Et_proy ** 2
+    Ew_SHG = fft(ifftshift(Et_SHG, 1), N, 1)
+    trace_sim = np.abs(Ew_SHG)**2 / np.max(np.abs(Ew_SHG)**2)
+
+    diff = np.sum(np.sum((trace_sim[:, lims[0]:lims[1]] - trace_exp[:, lims[0]:lims[1]])**2))
+    G = np.sqrt((1/(trace_exp.shape[0]*(lims[1]-lims[0])))*diff)
+
+    return G
+
+
 
 
 # Definition of the temporal and frequency axes
@@ -59,83 +81,89 @@ insertion = np.arange(-maxInsertion, maxInsertion, insertion_step)
 prop_phase = np.outer(insertion*1e6, nw*w/c)
 Ew_prop = np.multiply(Ew[:, np.newaxis, :], np.exp(-1j*prop_phase))
 
-print(Ew_prop.shape)
 
 Et_prop = ifftshift(ifft(Ew_prop, N, 2), 2)
 
-angles = np.reshape(np.arange(0, 360, 2), (Nz, 1))
+angles = np.reshape(np.arange(0, 360, 2)*np.pi/180, (Nz, 1))
 
-Et_proy = Et_prop[0, :, :]*np.cos(angles*np.pi/180) + Et_prop[1, :, :]*np.sin(angles*np.pi/180)
+Et_proy = Et_prop[0, :, :]*np.cos(angles) + Et_prop[1, :, :]*np.sin(angles)
 Et_SHG = Et_proy**2
 Ew_SHG = fft(ifftshift(Et_SHG, 1), N, 1)
+trace_exp = np.abs(Ew_SHG)**2 / np.max(np.abs(Ew_SHG)**2)
 
-print(Et_SHG.shape)
+w_izq = 3.8
+w_der = 5.4
+
+lims = []
+lims.append(np.where(np.abs(w-w_izq) == np.min(np.abs(w-w_izq)))[0][0])
+lims.append(np.where(np.abs(w-w_der) == np.min(np.abs(w-w_der)))[0][0])
+
 
 plt.figure()
-plt.pcolormesh(w, angles, np.abs(Ew_SHG)**2, cmap='turbo')
+plt.pcolormesh(w, angles, trace_exp, cmap='turbo')
+ax0 = plt.gca()
+ax0.set_xlim(w[lims])
+plt.show()
+
+N_terms = 10
+
+x_ini = np.random.rand(4*N_terms+2)*0.001
+
+res = minimize(errorG, x_ini, method='BFGS',
+               args=(w, 2.4, np.abs(Ew_x)**2, np.abs(Ew_y)**2, prop_phase, angles, trace_exp, lims, N_terms),
+               options={'disp': True})
+
+
+x = res.x
+w0 = 2.4
+
+phase_x = np.zeros(len(trace_exp[0, :]))
+phase_y = np.zeros(len(trace_exp[0, :]))
+
+for i in range(N_terms):
+    phase_x = phase_x + x[i] * np.cos(2*w*i*np.pi/2.5) + x[N_terms+i]*np.sin(2*w*i*np.pi/2.5)
+    phase_y = phase_y + x[2*N_terms+i]*np.cos(2*w*i*np.pi/2.5) + x[3*N_terms+i]*np.sin(2*w*i*np.pi/2.5)
+
+    phase_y = phase_y + x[40] + x[41]*(w-w0)
+
+# phase_x = (1/2)*x[0]*(w-w0)**2 + (1/6)*x[1]*(w-w0)**3 + (1/24)*x[2]*(w-w0)**4 + (1/120)*x[3]*(w-w0)**5
+# phase_y = (x[4] + x[5]*(w-w0) + (1/2)*x[6]*(w-w0)**2 + (1/6)*x[7]*(w-w0)**3 + (1/24)*x[8]*(w-w0)**4 +
+#            (1/120)*x[9]*(w-w0)**5)
+
+Ew_ret = np.array([np.abs(Ew_x)*np.exp(1j*phase_x), np.abs(Ew_y)*np.exp(1j*phase_y)])
+Ew_prop = np.multiply(Ew_ret[:, np.newaxis, :], np.exp(-1j * prop_phase))
+Et_prop = ifftshift(ifft(Ew_prop, N, 2), 2)
+Et_proy = Et_prop[0, :, :] * np.cos(angles) + Et_prop[1, :, :] * np.sin(angles)
+Et_SHG = Et_proy ** 2
+Ew_SHG = fft(ifftshift(Et_SHG, 1), N, 1)
+trace_sim = np.abs(Ew_SHG)**2 / np.max(np.abs(Ew_SHG)**2)
+
+plt.figure()
+plt.pcolormesh(w, angles, trace_sim, cmap='turbo')
+ax = plt.gca()
+ax.set_xlim(w[lims])
 plt.show()
 
 
-
-N_iters = 300
-
-Ew_ret = np.array([np.abs(Ew_x), np.abs(Ew_y)])
-Ew_ini = Ew_ret
-
-for i in range(N_iters):
-
-    
-    Ew_ret_prop = np.multiply(Ew_ret[:, np.newaxis, :], np.exp(-1j * prop_phase))
-    Et_ret_prop = ifftshift(ifft(Ew_ret_prop, N, 2), 2)
-    Et_ret_proy = Et_ret_prop[0, :, :] * np.cos(angles * np.pi / 180) + Et_ret_prop[1, :, :] * np.sin(angles * np.pi / 180)
-    Et_ret_SHG = Et_ret_proy ** 2
-    Ew_ret_SHG = fft(ifftshift(Et_ret_SHG, 1), N, 1)
-
-    Ew_new_ret_SHG = np.divide(np.abs(Ew_SHG)*Ew_ret_SHG, np.abs(Ew_ret_SHG), where=np.abs(Ew_ret_SHG)!=0)
-    Et_new_ret_SHG = ifftshift(ifft(Ew_new_ret_SHG, N, 1), 1)
-    Et_new_ret_proy = 1/2*(2*Et_ret_proy+(np.conjugate(Et_ret_proy)/(np.max(np.abs(Et_ret_proy)**2)))*(Et_new_ret_SHG-Et_ret_SHG))
-    
-    # Et_new_ret_prop = np.zeros((2, Nz, N), dtype='complex_')
-    Et_ret_prop[0, :, :] = np.divide((Et_new_ret_proy - np.sin(angles * np.pi / 180)*Et_ret_prop[1, :, :]),  np.cos(angles * np.pi / 180), where=np.cos(angles * np.pi / 180)!=0)
-
-    Et_ret_proy = Et_ret_prop[0, :, :] * np.cos(angles * np.pi / 180) + Et_ret_prop[1, :, :] * np.sin(angles * np.pi / 180)
-    Et_ret_SHG = Et_ret_proy ** 2
-    Ew_ret_SHG = fft(ifftshift(Et_ret_SHG, 1), N, 1)
-
-    Ew_new_ret_SHG = np.divide(np.abs(Ew_SHG) * Ew_ret_SHG, np.abs(Ew_ret_SHG), where=np.abs(Ew_ret_SHG) != 0)
-    Et_new_ret_SHG = ifftshift(ifft(Ew_new_ret_SHG, N, 1), 1)
-    Et_new_ret_proy = 1 / 2 * (2 * Et_ret_proy + (np.conjugate(Et_ret_proy) / (np.max(np.abs(Et_ret_proy) ** 2))) * (
-                Et_new_ret_SHG - Et_ret_SHG))
-
-    Et_ret_prop[1, :, :] = np.divide((Et_new_ret_proy - np.cos(angles * np.pi / 180)*Et_ret_prop[0, :, :]), np.sin(angles * np.pi / 180), where=np.sin(angles * np.pi / 180)!=0)
-
-    # Et_new_ret_prop[0, :, :] = (Et_new_ret_proy - np.sin(angles * np.pi / 180)*Et_ret_prop[1, :, :])
-    # Et_new_ret_prop[1, :, :] = (Et_new_ret_proy - np.cos(angles * np.pi / 180)*Et_ret_prop[0, :, :])
-
-
-    Ew_new_ret_prop = fft(ifftshift(Et_ret_prop, 2), N, 2)
-    Ew_new_ret = Ew_new_ret_prop * np.exp(+1j * prop_phase)
-
-
-    Ew_ret = np.average(Ew_new_ret, axis=1)
-    # Ew_ret = Ew_ret/np.max(np.abs(Ew_ret))
-
-    Ew_ret = np.abs(Ew_ini)*np.exp(1j*np.angle(Ew_ret))
-    print(i)
-
 plt.figure()
-plt.pcolormesh(w, angles, np.abs(Ew_ret_SHG)**2, cmap='turbo')
+plt.plot(w, np.abs(Ew_x)**2, 'r')
+ax = plt.gca()
+ax1 = plt.twinx(ax)
+ax1.plot(w, np.unwrap(np.angle(Ew[1])) - np.unwrap(np.angle(Ew[0])), 'k')
+ax1.plot(w, phase_y - phase_x, 'b')
+ax.set_xlim([1.8, 2.9])
+ax1.set_ylim([-10, 5])
 plt.show()
 
-plt.figure()
-plt.plot(w, np.abs(Ew_ret[0, :]))
-ax1 = plt.gca()
-ax2 = plt.twinx(ax1)
-ax2.plot(w, np.unwrap(np.angle(Ew_ret[0, :])))
-ax2.plot(w, np.unwrap(np.angle(Ew_ret[1, :])))
-ax2.plot(w, np.unwrap(np.angle(Ew_x)))
-plt.show()
+Et = ifftshift(ifft(Ew))
+Et_ret = ifftshift(ifft(Ew_ret))
 
 plt.figure()
-plt.pcolormesh(np.abs(ifftshift(ifft(Ew_new_ret[0,:,:], N, 1), 1)), cmap='turbo')
+plt.plot(t, np.abs(Et[0, :])**2, 'r')
+plt.plot(t, np.abs(Et[1, :])**2, ':r')
+ax = plt.gca()
+ax1 = plt.twinx(ax)
+ax1.plot(t, np.abs(Et_ret[0, :])**2, 'b')
+ax1.plot(t, np.abs(Et_ret[1, :])**2, ':b')
+ax.set_xlim([-60, 120])
 plt.show()
