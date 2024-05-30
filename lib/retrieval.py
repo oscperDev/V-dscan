@@ -24,6 +24,9 @@ def ptychographicScalar(w, Ew_ini, exp_trace, n, motor_step, position= None, N_m
 
     N = len(Ew_ini)
 
+    # weights = np.abs(range(Nz) - center)
+    # weights[center] = 1
+    # print(weights**0.2)
     Ew = Ew_ini
 
     G_min = 100
@@ -32,6 +35,8 @@ def ptychographicScalar(w, Ew_ini, exp_trace, n, motor_step, position= None, N_m
     threshold = 10
 
     for i in tqdm(range(N_iters), ncols=100, desc='Retrieval process'):
+
+        # Ew = np.divide(np.abs(Ew_ini) * Ew, np.abs(Ew), where=np.abs(Ew) != 0)
 
         Ew_prop = np.multiply(Ew[np.newaxis, :], np.exp(-1j*prop_phase))
         Et_prop = ifftshift(ifft(Ew_prop, N, 1), 1)
@@ -57,6 +62,8 @@ def ptychographicScalar(w, Ew_ini, exp_trace, n, motor_step, position= None, N_m
         Et_new_prop = (1/2)*(2*Et_prop+alpha*(np.conj(Et_prop)/np.max(np.abs(Et_prop))**2)*(Et_new_SHG-Et_SHG))
         Ew_new_prop = fft(ifftshift(Et_new_prop, 1), N, 1)
         Ew_new_array = Ew_new_prop*np.exp(1j * prop_phase)
+
+        Ew_new_array = Ew_new_array
         Ew_new = np.average(Ew_new_array, axis=0)
 
         # if i%20 == 0:
