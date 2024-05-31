@@ -6,8 +6,8 @@ from scipy.optimize import minimize
 
 from lib.files import readSpectrum, readTrace
 from lib.simulation import simulateDSCAN
-from lib.retrieval import ptychographicScalar
-from lib.measure import calculateFWHM
+from lib.retrieval import ptychographicScalar, functionMinimizationScalar
+from lib.data import calculateFWHM, reshapeTrace
 
 import time
 
@@ -62,14 +62,26 @@ posw0 = np.where(np.abs(w-w0) == np.min(np.abs(w-w0)))[0][0]
 
 Ew_ini = np.abs(Ew)*np.exp(1j*np.random.rand(len(Ew)))
 
+reduction_factor = 1
+
+trace_sim = reshapeTrace(trace_sim, reduction_factor)
+motor_step = motor_step*reduction_factor
+
+
 start = time.time()
-Ew_ret, trace_ret, insertion, G, iteration, mu = ptychographicScalar(w, Ew_ini, trace_sim, nw, motor_step, position=None, lims=lims, N_iters=1000, force_spec=20)
+Ew_ret, trace_ret, insertion, G, iteration, mu = ptychographicScalar(w, Ew_ini, trace_sim, nw, motor_step, position=None, lims=lims, N_iters=500, force_spec=30)
 end = time.time()
 
-print('\nRETRIEVAL RESULTS:\n')
+start2 = time.time()
+Ew_ret2, trace_ret2, insertion2, G2, mu2 = functionMinimizationScalar(w, np.abs(Ew_ini)**2, trace_sim, 15, nw, motor_step, lims=lims)
+end2 = time.time()
+
+
+print('\nRETRIEVAL RESULTS PTYCHOGRAPHIC:\n')
+print('Retrieval time =', round(end-start, 0), ' s\n')
 print('Error G =', round(G, 4))
 print('Minimum of G achieved on interation =', iteration)
-print('Retrieval time =', round(end-start, 0), ' s')
+
 
 ret_spec = np.abs(Ew_ret)**2/np.max(np.abs(Ew_ret)**2)
 ret_phase = np.unwrap(np.angle(Ew_ret), period=np.pi)
@@ -85,7 +97,22 @@ Et_ret = ifftshift(ifft(Ew_ret, N))
 FWHM_ret = calculateFWHM(t, np.abs(Et_ret)**2)
 FWHM_sim = calculateFWHM(t, np.abs(Et_sim)**2)
 
-print('FWHM retrieved =', round(FWHM_ret, 2), ' fs')
+
+print('\nRETRIEVAL RESULTS MINIMIZATION:\n')
+print('Retrieval time =', round(end2-start2, 0), ' s\n')
+print('Error G =', round(G2, 4))
+
+ret_spec2 = np.abs(Ew_ret2)**2/np.max(np.abs(Ew_ret2)**2)
+ret_phase2 = np.unwrap(np.angle(Ew_ret2), period=np.pi)
+ret_phase2 = ret_phase2 - ret_phase2[posw0]
+
+Et_ret2 = ifftshift(ifft(Ew_ret2, N))
+
+FWHM_ret2 = calculateFWHM(t, np.abs(Et_ret2)**2)
+
+
+print('FWHM retrieved ptychographic =', round(FWHM_ret, 2), ' fs')
+print('FWHM retrieved minimization =', round(FWHM_ret2, 2), ' fs')
 print('FWHM simulated =', round(FWHM_sim, 2), ' fs')
 
 plt.figure()
@@ -101,12 +128,20 @@ ax.set_xlim([w_izq, w_der])
 plt.show()
 
 plt.figure()
+plt.pcolormesh(w, insertion, trace_ret2, cmap='turbo')
+ax = plt.gca()
+ax.set_xlim([w_izq, w_der])
+plt.show()
+
+plt.figure()
 plt.plot(w, sim_spec, 'b')
 ax = plt.gca()
 ax.plot(w, ret_spec, 'r')
+ax.plot(w, ret_spec2, 'k')
 ax1 = ax.twinx()
 ax1.plot(w, sim_phase, 'b:')
 ax1.plot(w, ret_phase, 'r:')
+ax1.plot(w, ret_phase2, 'k:')
 ax.set_xlim([1.8, 2.9])
 ax1.set_ylim([-5, 5])
 plt.show()
@@ -115,6 +150,7 @@ plt.plot()
 plt.plot(t, np.abs(Et_sim)**2/np.max(np.abs(Et_sim)**2), 'b')
 ax = plt.gca()
 ax.plot(t, np.abs(Et_ret)**2/np.max(np.abs(Et_ret)**2), 'r')
+ax.plot(t, np.abs(Et_ret2)**2/np.max(np.abs(Et_ret2)**2), 'k')
 ax1 = ax.twinx()
 ax1.plot(t, np.unwrap(np.angle(Et_sim)), 'b:')
 ax1.plot(t, np.unwrap(np.angle(Et_ret)), 'r:')
@@ -125,6 +161,7 @@ plt.show()
 plt.figure()
 plt.plot(w, mu)
 ax = plt.gca()
+ax.plot(w, mu2)
 ax.set_xlim([w_izq, w_der])
 ax.set_ylim([0, 10])
 plt.show()

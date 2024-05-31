@@ -16,3 +16,14 @@ def calculateFWHM(t, pulse, N = 2**15):
     FWHM = t_new[pos_der] - t_new[pos_izq]
 
     return FWHM
+
+
+def reshapeTrace(trace, reductionFactor, limits=None):
+    Nz = trace.shape[0]
+    if limits:
+        values = range(limits[0], limits[1], reductionFactor)
+    else:
+        values = range(0, Nz-1, reductionFactor)
+    new_trace = trace[values, :]
+
+    return new_trace
