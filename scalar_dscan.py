@@ -7,6 +7,7 @@ from scipy.optimize import minimize
 from lib.files import readSpectrum, readTrace
 from lib.simulation import simulateDSCAN
 from lib.retrieval import ptychographicScalar
+from lib.measure import calculateFWHM
 
 import time
 
@@ -62,7 +63,7 @@ posw0 = np.where(np.abs(w-w0) == np.min(np.abs(w-w0)))[0][0]
 Ew_ini = np.abs(Ew)*np.exp(1j*np.random.rand(len(Ew)))
 
 start = time.time()
-Ew_ret, trace_ret, insertion, G, iteration, mu = ptychographicScalar(w, Ew_ini, trace_sim, nw, motor_step, position=None, lims=lims, N_iters=500)
+Ew_ret, trace_ret, insertion, G, iteration, mu = ptychographicScalar(w, Ew_ini, trace_sim, nw, motor_step, position=None, lims=lims, N_iters=1000, force_spec=20)
 end = time.time()
 
 print('\nRETRIEVAL RESULTS:\n')
@@ -80,6 +81,12 @@ sim_phase = sim_phase - sim_phase[posw0]
 
 Et_sim = ifftshift(ifft(Ew, N))
 Et_ret = ifftshift(ifft(Ew_ret, N))
+
+FWHM_ret = calculateFWHM(t, np.abs(Et_ret)**2)
+FWHM_sim = calculateFWHM(t, np.abs(Et_sim)**2)
+
+print('FWHM retrieved =', round(FWHM_ret, 2), ' fs')
+print('FWHM simulated =', round(FWHM_sim, 2), ' fs')
 
 plt.figure()
 plt.pcolormesh(w, insertion, trace_sim, cmap='turbo')

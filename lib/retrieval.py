@@ -4,7 +4,21 @@ import matplotlib.pyplot as plt
 from alive_progress import alive_bar
 from tqdm import tqdm
 
-def ptychographicScalar(w, Ew_ini, exp_trace, n, motor_step, position= None, N_motors=2, wedge_angle = 8, N_iters=150, lims=None):
+def ptychographicScalar(w, Ew_ini, exp_trace, n, motor_step, position= None, N_motors=2, wedge_angle = 8, N_iters=150, lims=None, force_spec=1):
+    """Ptychographic core to retrieve scalar dscan traces. Inputs:
+        w: frequency axis
+        Ew_ini: initial guess of the electric field in the spectral domain
+        exp_trace: experimental trace to be retrieved
+        n: refractive index of the material to perform dispersion scan
+        motor_step: the distance that the motor moves
+        position: the step of the trace in which the spectrum and spectral phase is returned
+        N_motors: the number of stepper motors
+        wedge_angle: the angle of the wedges
+        N_iters: the number of iterations to execute the ptychographic algorithm
+        lims: the limits in which the error function is calculated
+        force_spec: a number to control when the algorithm forces the retrieved electric field to have the experimental
+                    spectrum. The number chosen means every force_spec number of interations the field is forced to have
+                    the experimental spectrum. Personal experience: 20-30 works good, 1 is too restrictive."""
 
     c = 3e2
 
@@ -32,11 +46,12 @@ def ptychographicScalar(w, Ew_ini, exp_trace, n, motor_step, position= None, N_m
     G_min = 100
     G_prev = 0
     counter = 0
-    threshold = 10
+    threshold = 1000
 
     for i in tqdm(range(N_iters), ncols=100, desc='Retrieval process'):
 
-        # Ew = np.divide(np.abs(Ew_ini) * Ew, np.abs(Ew), where=np.abs(Ew) != 0)
+        # norma = np.max(np.abs(Ew))/np.max(np.abs(Ew_ini))
+        # Ew = norma* np.divide(np.abs(Ew_ini) * Ew, np.abs(Ew), where=np.abs(Ew) != 0)
 
         Ew_prop = np.multiply(Ew[np.newaxis, :], np.exp(-1j*prop_phase))
         Et_prop = ifftshift(ifft(Ew_prop, N, 1), 1)
@@ -57,7 +72,8 @@ def ptychographicScalar(w, Ew_ini, exp_trace, n, motor_step, position= None, N_m
 
         alpha = np.random.rand(1)*2
         cal_exp_trace = np.divide(exp_trace, mu, where=mu!=0)
-        Ew_new_SHG = np.divide(np.sqrt(cal_exp_trace)*Ew_SHG, np.abs(Ew_SHG), where=np.abs(Ew_SHG) != 0)
+        norma2 = np.max(np.abs(Ew_SHG)/np.max(np.abs(np.sqrt(cal_exp_trace))))
+        Ew_new_SHG = norma2*np.divide(np.sqrt(cal_exp_trace)*Ew_SHG, np.abs(Ew_SHG), where=np.abs(Ew_SHG) != 0)
         Et_new_SHG = ifftshift(ifft(Ew_new_SHG, N, 1), 1)
         Et_new_prop = (1/2)*(2*Et_prop+alpha*(np.conj(Et_prop)/np.max(np.abs(Et_prop))**2)*(Et_new_SHG-Et_SHG))
         Ew_new_prop = fft(ifftshift(Et_new_prop, 1), N, 1)
@@ -66,13 +82,14 @@ def ptychographicScalar(w, Ew_ini, exp_trace, n, motor_step, position= None, N_m
         Ew_new_array = Ew_new_array
         Ew_new = np.average(Ew_new_array, axis=0)
 
-        # if i%20 == 0:
-        #     # Ew = np.abs(Ew_ini)*np.exp(1j*np.angle(Ew_new))
-        #     Ew = np.divide(np.abs(Ew_ini) * Ew_new, np.abs(Ew_new), where=np.abs(Ew_new) != 0)
-        # else:
-        #     Ew = Ew_new
+        if i%force_spec == 0:
+            # Ew = np.abs(Ew_ini)*np.exp(1j*np.angle(Ew_new))
+            norma = np.max(np.abs(Ew)) / np.max(np.abs(Ew_ini))
+            Ew = norma*np.divide(np.abs(Ew_ini) * Ew_new, np.abs(Ew_new), where=np.abs(Ew_new) != 0)
+        else:
+            Ew = Ew_new
 
-        Ew = Ew_new
+        # Ew = Ew_new
 
         # Method to introduce a perturbation in the electric field to force new updates
         if counter > threshold and G > G_prev:
@@ -80,8 +97,6 @@ def ptychographicScalar(w, Ew_ini, exp_trace, n, motor_step, position= None, N_m
             counter = 0
         G_prev = G
         counter = counter + 1
-
-
 
     if position:
         Ew_prop_ret = np.multiply(Ew_ret[np.newaxis, :], np.exp(-1j*prop_phase))
@@ -114,3 +129,5 @@ def spectralResponse(expT, simT):
     den = np.sum(simT**2, axis=0)
 
     return np.divide(num, den, where=den != 0)
+
+
