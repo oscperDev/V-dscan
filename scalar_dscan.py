@@ -49,8 +49,10 @@ Ew = readSpectrum('Data\\Espectro_reconstruido_traza.txt', w)
 # Simulation of a d-scan trace
 trace_sim = simulateDSCAN(w, insertion, nw, Ew)
 
+# Reading d-scan trace from file
 trace_sim = readTrace('Data\\Traza_experimental.txt', 'Data\\landa_ocean.txt', w)
 
+# Selection of the limit frequencies to calculate the error function
 w_izq = 3.6
 w_der = 5.8
 w0 = 2.4
@@ -60,23 +62,34 @@ lims.append(np.where(np.abs(w-w_izq) == np.min(np.abs(w-w_izq)))[0][0])
 lims.append(np.where(np.abs(w-w_der) == np.min(np.abs(w-w_der)))[0][0])
 posw0 = np.where(np.abs(w-w0) == np.min(np.abs(w-w0)))[0][0]
 
-Ew_ini = np.abs(Ew)*np.exp(1j*np.random.rand(len(Ew)))
 
+# Changing the experimental data shape (reducing the insertion steps) to speed up the retrieval process
 reduction_factor = 1
 
 trace_sim = reshapeTrace(trace_sim, reduction_factor)
 motor_step = motor_step*reduction_factor
 
 
+# generation of the initial field to perform the retrieval
+Ew_ini = np.abs(Ew)*np.exp(1j*np.random.rand(len(Ew)))
+
+
+# Retrieval using the ptychographic algorithm
 start = time.time()
-Ew_ret, trace_ret, insertion, G, iteration, mu = ptychographicScalar(w, Ew_ini, trace_sim, nw, motor_step, position=None, lims=lims, N_iters=500, force_spec=30)
+Ew_ret, trace_ret, insertion, G, iteration, mu = ptychographicScalar(w, Ew_ini, trace_sim, nw, motor_step,
+                                                                     position=None, lims=lims, N_iters=500,
+                                                                     force_spec=30)
 end = time.time()
 
+
+# Retrieval using the function minimization algorithm
 start2 = time.time()
-Ew_ret2, trace_ret2, insertion2, G2, mu2 = functionMinimizationScalar(w, np.abs(Ew_ini)**2, trace_sim, 15, nw, motor_step, lims=lims)
+Ew_ret2, trace_ret2, insertion2, G2, mu2 = functionMinimizationScalar(w, np.abs(Ew_ini)**2, trace_sim, 15,
+                                                                      nw, motor_step, lims=lims)
 end2 = time.time()
 
 
+# Showing results
 print('\nRETRIEVAL RESULTS PTYCHOGRAPHIC:\n')
 print('Retrieval time =', round(end-start, 0), ' s\n')
 print('Error G =', round(G, 4))
