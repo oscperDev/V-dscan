@@ -5,7 +5,7 @@ from scipy.fft import fft, ifft, fftshift, ifftshift
 from scipy.optimize import minimize
 
 from lib.files import readSpectrum, readTrace
-from lib.simulation import simulateDSCAN
+from lib.simulation import simulateDSCAN, superGaussian
 from lib.retrieval import ptychographicScalar, functionMinimizationScalar
 from lib.data import calculateFWHM, reshapeTrace
 
@@ -36,7 +36,7 @@ nw = nw_f(w)
 motor_step = 0.125  # mm
 wedge_angle = 8     # degree
 insertion_step = motor_step*2*np.tan(wedge_angle*np.pi/180)
-Nz = 180
+Nz = 260
 maxInsertion = (Nz/2)*insertion_step
 offset = 0          # mm
 insertion = np.arange(-maxInsertion+offset, maxInsertion+offset, insertion_step)
@@ -45,12 +45,14 @@ insertion = np.arange(-maxInsertion+offset, maxInsertion+offset, insertion_step)
 # Loading a spectrum and a spectral phase to define an electric field
 Ew = readSpectrum('Data\\Espectro_reconstruido_traza.txt', w)
 
-
+Et = superGaussian(t, 20, 2, 0)*np.exp(1j*2.4*t)
+Ew = fft(ifftshift(Et))
 # Simulation of a d-scan trace
 trace_sim = simulateDSCAN(w, insertion, nw, Ew)
 
+
 # Reading d-scan trace from file
-trace_sim = readTrace('Data\\Traza_experimental.txt', 'Data\\landa_ocean.txt', w)
+# trace_sim = readTrace('Data\\Traza_experimental.txt', 'Data\\landa_ocean.txt', w)
 
 # Selection of the limit frequencies to calculate the error function
 w_izq = 3.6
@@ -78,14 +80,14 @@ Ew_ini = np.abs(Ew)*np.exp(1j*np.random.rand(len(Ew)))
 start = time.time()
 Ew_ret, trace_ret, insertion, G, iteration, mu = ptychographicScalar(w, Ew_ini, trace_sim, nw, motor_step,
                                                                      position=None, lims=lims, N_iters=500,
-                                                                     force_spec=30)
+                                                                     force_spec=1)
 end = time.time()
 
 
 # Retrieval using the function minimization algorithm
 start2 = time.time()
-Ew_ret2, trace_ret2, insertion2, G2, mu2 = functionMinimizationScalar(w, np.abs(Ew_ini)**2, trace_sim, 15,
-                                                                      nw, motor_step, lims=lims)
+Ew_ret2, trace_ret2, insertion2, G2, mu2 = functionMinimizationScalar(w, np.abs(Ew_ini)**2, trace_sim, 1,
+                                                            nw, motor_step, lims=lims)
 end2 = time.time()
 
 
